@@ -3,10 +3,10 @@ package de.seuhd.campuscoffee.domain.impl;
 import de.seuhd.campuscoffee.domain.exceptions.DuplicatePosNameException;
 import de.seuhd.campuscoffee.domain.exceptions.OsmNodeMissingFieldsException;
 import de.seuhd.campuscoffee.domain.exceptions.OsmNodeNotFoundException;
+import de.seuhd.campuscoffee.domain.exceptions.PosNotFoundException;
 import de.seuhd.campuscoffee.domain.model.CampusType;
 import de.seuhd.campuscoffee.domain.model.OsmNode;
 import de.seuhd.campuscoffee.domain.model.Pos;
-import de.seuhd.campuscoffee.domain.exceptions.PosNotFoundException;
 import de.seuhd.campuscoffee.domain.model.PosType;
 import de.seuhd.campuscoffee.domain.ports.OsmDataService;
 import de.seuhd.campuscoffee.domain.ports.PosDataService;
@@ -16,8 +16,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Implementation of the POS service that handles business logic related to POS entities.
@@ -26,6 +29,7 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 public class PosServiceImpl implements PosService {
+
     private final PosDataService posDataService;
     private final OsmDataService osmDataService;
 
@@ -69,10 +73,10 @@ public class PosServiceImpl implements PosService {
         log.info("Importing POS from OpenStreetMap node {}...", nodeId);
 
         // Fetch the OSM node data using the port
-        OsmNode osmNode = osmDataService.fetchNode(nodeId);
+        // (Methode heißt in deinem OsmDataService/OsmDataServiceImpl jetzt loadNode)
+        OsmNode osmNode = osmDataService.loadNode(nodeId);
 
         // Convert OSM node to POS domain object and upsert it
-        // TODO: Implement the actual conversion (the response is currently hard-coded).
         Pos savedPos = upsert(convertOsmNodeToPos(osmNode));
         log.info("Successfully imported POS '{}' from OSM node {}", savedPos.name(), nodeId);
 
@@ -81,23 +85,53 @@ public class PosServiceImpl implements PosService {
 
     /**
      * Converts an OSM node to a POS domain object.
-     * Note: This is a stub implementation and should be replaced with real mapping logic.
+     * Uses OSM tags (name, addr:street, addr:housenumber, addr:postcode, addr:city).
+     * Throws OsmNodeMissingFieldsException if required fields are missing or invalid.
      */
     private @NonNull Pos convertOsmNodeToPos(@NonNull OsmNode osmNode) {
-        if (osmNode.nodeId().equals(5589879349L)) {
-            return Pos.builder()
-                    .name("Rada Coffee & Rösterei")
-                    .description("Caffé und Rösterei")
-                    .type(PosType.CAFE)
-                    .campus(CampusType.ALTSTADT)
-                    .street("Untere Straße")
-                    .houseNumber("21")
-                    .postalCode(69117)
-                    .city("Heidelberg")
-                    .build();
-        } else {
-            throw new OsmNodeMissingFieldsException(osmNode.nodeId());
+        Map<String, String> tags = osmNode.tags(); // aus deinem OsmNode-Record
+
+        String name        = tags.get("name");
+        String street      = tags.get("addr:street");
+        String houseNumber = tags.get("addr:housenumber");
+        String postalCode  = tags.get("addr:postcode");
+        String city        = tags.get("addr:city");
+
+        // Fehlende Pflichtfelder sammeln
+        Set<String> missing = new HashSet<>();
+        if (name == null)        missing.add("name");
+        if (street == null)      missing.add("addr:street");
+        if (houseNumber == null) missing.add("addr:housenumber");
+        if (postalCode == null)  missing.add("addr:postcode");
+        if (city == null)        missing.add("addr:city");
+
+        if (!missing.isEmpty()) {
+            throw new OsmNodeMissingFieldsException(osmNode.nodeId(), missing);
         }
+
+        int postalCodeInt;
+        try {
+            postalCodeInt = Integer.parseInt(postalCode);
+        } catch (NumberFormatException e) {
+            Set<String> missingPostal = new HashSet<>();
+            missingPostal.add("addr:postcode (not a valid number)");
+            throw new OsmNodeMissingFieldsException(osmNode.nodeId(), missingPostal);
+        }
+
+        // Simple defaults for type & campus; can be refined later
+        PosType type = PosType.CAFE;
+        CampusType campus = CampusType.ALTSTADT;
+
+        return Pos.builder()
+                .name(name)
+                .description(null)   // optional
+                .type(type)
+                .campus(campus)
+                .street(street)
+                .houseNumber(houseNumber)
+                .postalCode(postalCodeInt)
+                .city(city)
+                .build();
     }
 
     /**

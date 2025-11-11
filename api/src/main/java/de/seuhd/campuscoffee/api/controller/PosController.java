@@ -19,6 +19,7 @@ import java.util.List;
 @RequestMapping("/api/pos")
 @RequiredArgsConstructor
 public class PosController {
+
     private final PosService posService;
     private final PosDtoMapper posDtoMapper;
 
@@ -48,11 +49,11 @@ public class PosController {
                 .body(created);
     }
 
-    @PostMapping("/import/osm/{nodeId}")
-    public ResponseEntity<PosDto> create(
-            @PathVariable Long nodeId) {
+    @PostMapping("/import/osm/{osmNodeId}")
+    public ResponseEntity<PosDto> importFromOsm(
+            @PathVariable Long osmNodeId) {
         PosDto created = posDtoMapper.fromDomain(
-                posService.importFromOsmNode(nodeId)
+                posService.importFromOsmNode(osmNodeId)
         );
         return ResponseEntity
                 .created(getLocation(created.id()))

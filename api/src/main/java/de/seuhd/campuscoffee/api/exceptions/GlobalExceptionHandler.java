@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 
@@ -21,16 +22,17 @@ import java.time.LocalDateTime;
 public class GlobalExceptionHandler {
 
     /**
-     * Handles all "Not Found" exceptions from the domain layer.
+     * Handles "Not Found" exceptions from the domain layer (POS only).
      * Returns HTTP 404 (Not Found).
      *
-     * @param exception theNotFoundException that was thrown
+     * Note: OSM-specific 404 is handled by {@link #handleOsmNodeNotFound(OsmNodeNotFoundException, WebRequest)}.
+     *
+     * @param exception the PosNotFoundException that was thrown
      * @param request the web request
      * @return ResponseEntity with ErrorResponse and HTTP 404
      */
     @ExceptionHandler({
-            PosNotFoundException.class,
-            OsmNodeNotFoundException.class
+            PosNotFoundException.class
     })
     public ResponseEntity<ErrorResponse> handleNotFoundException(
             RuntimeException exception,
@@ -41,8 +43,25 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles the OSM-specific "Not Found" case.
+     * Returns HTTP 404 (Not Found).
+     *
+     * @param exception the OsmNodeNotFoundException that was thrown
+     * @param request the web request
+     * @return ResponseEntity with ErrorResponse and HTTP 404
+     */
+    @ExceptionHandler(OsmNodeNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleOsmNodeNotFound(
+            OsmNodeNotFoundException exception,
+            WebRequest request
+    ) {
+        log.warn("OSM node not found: {}", exception.getMessage());
+        return buildErrorResponse(exception, HttpStatus.NOT_FOUND, request);
+    }
+
+    /**
      * Handles duplicate/uniqueness constraint violations.
-     * Returns HTTP 409 (Conflict) - standard status for resource conflicts.
+     * Returns HTTP 409 (Conflict).
      *
      * @param exception the duplicate exception that was thrown
      * @param request the web request
@@ -60,16 +79,17 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handles validation and bad request exceptions.
+     * Handles validation and bad request exceptions that are not OSM field issues.
      * Returns HTTP 400 (Bad Request).
+     *
+     * OSM field validation is mapped to 422 in {@link #handleOsmNodeMissingFields(OsmNodeMissingFieldsException, WebRequest)}.
      *
      * @param exception the exception that was thrown
      * @param request the web request
      * @return ResponseEntity with ErrorResponse and HTTP 400
      */
     @ExceptionHandler({
-            IllegalArgumentException.class,
-            OsmNodeMissingFieldsException.class
+            IllegalArgumentException.class
     })
     public ResponseEntity<ErrorResponse> handleBadRequestException(
             RuntimeException exception,
@@ -77,6 +97,41 @@ public class GlobalExceptionHandler {
     ) {
         log.warn("Bad request: {}", exception.getMessage());
         return buildErrorResponse(exception, HttpStatus.BAD_REQUEST, request);
+    }
+
+    /**
+     * Handles OSM nodes missing required address/name fields.
+     * Returns HTTP 422 (Unprocessable Entity).
+     *
+     * @param exception the OsmNodeMissingFieldsException that was thrown
+     * @param request the web request
+     * @return ResponseEntity with ErrorResponse and HTTP 422
+     */
+    @ExceptionHandler(OsmNodeMissingFieldsException.class)
+    public ResponseEntity<ErrorResponse> handleOsmNodeMissingFields(
+            OsmNodeMissingFieldsException exception,
+            WebRequest request
+    ) {
+        log.warn("OSM node missing required fields: {}", exception.getMessage());
+        return buildErrorResponse(exception, HttpStatus.UNPROCESSABLE_ENTITY, request);
+    }
+
+    /**
+     * Handles errors when calling the external OSM service (network/HTTP client issues).
+     * Returns HTTP 502 (Bad Gateway).
+     *
+     * @param exception the RestClientException that was thrown
+     * @param request the web request
+     * @return ResponseEntity with ErrorResponse and HTTP 502
+     */
+    @ExceptionHandler(RestClientException.class)
+    public ResponseEntity<ErrorResponse> handleOsmClientError(
+            RestClientException exception,
+            WebRequest request
+    ) {
+        log.error("Error calling external OSM service: {}", exception.getMessage());
+        return buildErrorResponse(exception, HttpStatus.BAD_GATEWAY, request,
+                "Error calling external OSM service");
     }
 
     /**
