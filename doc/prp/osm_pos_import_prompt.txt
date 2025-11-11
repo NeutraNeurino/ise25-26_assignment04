@@ -1,0 +1,47 @@
+Prompt:
+
+OSM POS Import
+
+You are an experienced Java/Spring Boot backend engineer and you help me implement a small feature in an existing project.
+
+Project (context):
+- CampusCoffee backend
+- Multi-module Maven project with ports-and-adapters:
+  -'api' = controllers
+  - 'application' = Spring Boot app/orchestration
+  -'data' = persistence adaptor
+  - 'domain' = domain model + business logic
+
+Goal:
+Implement an endpoint that creates a POS from an OpenStreetMap node:
+- POST /api/pos/import/osm/{osmNodeId}
+
+Expected behaviour:
+1. When the endpoint is called, the backend fetches OSM XML from
+   'https://www.openstreetmap.org/api/0.6/node/{osmNodeId}'.
+
+2. It parses the 'tag' elements, specifically:
+   - 'name'
+   - 'addr:street'
+   - 'addr:housenumber'
+   - 'addr:postcode'
+   - 'addr:city'
+
+3. These values are mapped to the existing POS domain model (name, street, houseNumber, postalCode, city, type, campus).
+
+4. Save the POS via the existing repository/port.
+
+5. The endpoint returns HTTP 201 and the created POS as JSON.
+6. Typical errors (node not found, missing important tags, OSM/network errors) should return meaningful HTTP status codes and error messages.
+
+Your Constraints:
+- Use the existing package structure and naming conventins.
+- The controller in 'api' should stay thin and delegate to a service in 'application' (or a suitable place in 'domain').
+- Use a standard HTTP client (e.g. RestTemplate or WebClient).
+- Keep the ports-and-adapters idea intact (no direct framework calls from 'domain').
+
+I want you to respond like this:
+1.First briefly explain what you want to change and why.
+2. Then show only the relevant code blocks with file paths.
+3.Suggest small, incremental steps that I can apply and commit one by one.
+4. Please also give simple test instructions, e.g. concrete curl commands I can run.
